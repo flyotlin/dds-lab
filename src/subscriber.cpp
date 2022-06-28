@@ -56,9 +56,40 @@ private:
     SubListener *listener_;
 
     int node_id;
+    bool is_reliable;
+
+    bool change_datareader_reliability(bool is_reliable)
+    {
+        DataReaderQos qos = reader_->get_qos();
+
+        ReliabilityQosPolicy policy;
+        policy.kind = is_reliable ? RELIABLE_RELIABILITY_QOS : BEST_EFFORT_RELIABILITY_QOS;
+        qos.reliability(policy);
+
+        if (ReturnCode_t::RETCODE_OK != reader_->set_qos(qos)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool change_topic_reliability(bool is_reliable)
+    {
+        TopicQos qos = topic_->get_qos();
+
+        ReliabilityQosPolicy policy;
+        policy.kind = is_reliable ? RELIABLE_RELIABILITY_QOS : BEST_EFFORT_RELIABILITY_QOS;
+        qos.reliability(policy);
+
+        if (ReturnCode_t::RETCODE_OK != topic_->set_qos(qos)) {
+            return false;
+        }
+
+        return true;
+    }
 
 public:
-    MySubscriber(int node_id)
+    MySubscriber(int node_id, bool is_reliable)
         : participant_(nullptr)
         , subscriber_(nullptr)
         , topic_(nullptr)
@@ -66,6 +97,7 @@ public:
         , type_(new SimpleStringPubSubType)
         , node_id(node_id)
         , listener_(new SubListener(node_id))
+        , is_reliable(is_reliable)
     {
     }
 
@@ -96,12 +128,13 @@ public:
         type_.register_type(participant_);
 
         // create Topic
-        const std::string topic_name = "test_topic";
+        const std::string topic_name = "test_topic_" + node_id;
         const std::string type_name = "SimpleString";
         topic_ = participant_->create_topic(topic_name, type_name, TOPIC_QOS_DEFAULT);
         if (topic_ == nullptr) {
             return false;
         }
+        change_topic_reliability(is_reliable);
 
         // create Subscriber
         subscriber_ = participant_->create_subscriber(SUBSCRIBER_QOS_DEFAULT, nullptr);
@@ -114,6 +147,7 @@ public:
         if (reader_ == nullptr) {
             return false;
         }
+        change_datareader_reliability(is_reliable);
 
         return true;
     }
@@ -129,13 +163,17 @@ public:
 
 int main(int argc, char *argv[])
 {
-    if (argc != 2) {
-        std::cout << "Provide 2 arguments!\n";
+    if (argc != 3) {
+        std::cout << "Provide 3 arguments!\n";
         return 0;
     }
 
     int node_id = atoi(argv[1]);
-    MySubscriber *sub = new MySubscriber(node_id);
+    bool is_reliable = (!strcmp(argv[2], "true")) ? true : false;
+
+    std::cout << "Sub Node: " << node_id << ", Reliability: " << argv[2] << " " << is_reliable << std::endl;
+
+    MySubscriber *sub = new MySubscriber(node_id, is_reliable);
     if (sub->init()) {
         sub->run();
     }

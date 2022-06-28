@@ -24,15 +24,45 @@ private:
     DataWriterListener listener_;
 
     int node_id;
+    bool is_reliable;
+
+    bool change_datawriter_reliability(bool is_reliable)
+    {
+        DataWriterQos qos = writer_->get_qos();
+
+        ReliabilityQosPolicy policy;
+        policy.kind = is_reliable ? RELIABLE_RELIABILITY_QOS : BEST_EFFORT_RELIABILITY_QOS;
+        qos.reliability(policy);
+
+        if (ReturnCode_t::RETCODE_OK != writer_->set_qos(qos)) {
+            return false;
+        }
+        return true;
+    }
+
+    bool change_topic_reliability(bool is_reliable)
+    {
+        TopicQos qos = topic_->get_qos();
+
+        ReliabilityQosPolicy policy;
+        policy.kind = is_reliable ? RELIABLE_RELIABILITY_QOS : BEST_EFFORT_RELIABILITY_QOS;
+        qos.reliability(policy);
+
+        if (ReturnCode_t::RETCODE_OK != topic_->set_qos(qos)) {
+            return false;
+        }
+        return true;
+    }
 
 public:
-    MyPublisher(int node_id)
+    MyPublisher(int node_id, bool is_reliable)
         : participant_(nullptr)
         , publisher_(nullptr)
         , topic_(nullptr)
         , writer_(nullptr)
         , type_(new SimpleStringPubSubType())
         , node_id(node_id)
+        , is_reliable(is_reliable)
     {
     }
 
@@ -67,13 +97,14 @@ public:
         type_.register_type(participant_);
 
         // create Topic
-        const std::string topic_name = "test_topic";
+        const std::string topic_name = "test_topic_" + node_id;
         const std::string type_name = "SimpleString";   // 要跟 .idl 檔名一樣
 
         topic_ = participant_->create_topic(topic_name, type_name, TOPIC_QOS_DEFAULT); // topic name, type name
         if (topic_ == nullptr) {
             return false;
         }
+        change_topic_reliability(is_reliable);
 
         // create Publisher
         publisher_ = participant_->create_publisher(PUBLISHER_QOS_DEFAULT, nullptr);
@@ -86,6 +117,7 @@ public:
         if (writer_ == nullptr) {
             return false;
         }
+        change_datawriter_reliability(is_reliable);
 
         return true;
     }
@@ -111,13 +143,17 @@ public:
 
 int main(int argc, char *argv[])
 {
-    if (argc != 2) {
-        std::cout << "Provide 2 arguments!\n";
+    if (argc != 3) {
+        std::cout << "Provide 3 arguments!\n";
         return 0;
     }
 
     int node_id = atoi(argv[1]);
-    MyPublisher *pub = new MyPublisher(node_id);
+    bool is_reliable = (!strcmp(argv[2], "true")) ? true : false;
+
+    std::cout << "Pub Node: " << node_id << ", Reliability: " << argv[2] << " " << is_reliable << std::endl;
+
+    MyPublisher *pub = new MyPublisher(node_id, is_reliable);
     if (pub->init()) {
         pub->run();
     }
