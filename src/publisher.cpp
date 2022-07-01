@@ -25,6 +25,7 @@ private:
 
     int node_id;
     bool is_reliable;
+    int sleep_time;
 
     bool change_datawriter_reliability(bool is_reliable)
     {
@@ -55,7 +56,7 @@ private:
     }
 
 public:
-    MyPublisher(int node_id, bool is_reliable)
+    MyPublisher(int node_id, bool is_reliable, int sleep_time)
         : participant_(nullptr)
         , publisher_(nullptr)
         , topic_(nullptr)
@@ -63,6 +64,7 @@ public:
         , type_(new SimpleStringPubSubType())
         , node_id(node_id)
         , is_reliable(is_reliable)
+        , sleep_time(sleep_time)
     {
     }
 
@@ -125,6 +127,7 @@ public:
     bool publish()
     {
         data_.index(data_.index() + 1);
+        data_.data("RErRxZp9fprLbyZD1GXtKujEMyIfxI15AyB5sxVRaN96kB4auk9a8NJ69gYlpMySpZ9jXWFuf1hOGaUVaHZr4zhoHh5wSOT6tUhu7UZpIaainlUBgL3N6xZSuczTKVL4Q7DgBW7mm2mOwKeJLQnosqGIPZb1V89z4toJUu7nTHKxx3TGQLjNOLnm7Hs3A6jlWkawQeEbnuoZUdDYsBHU4cZz7Hr7y0TqoZJWCjIYpyLCV3PaAqNYXLYloqQr9YM");  // 255
         writer_->write(&data_);
 
         return true;
@@ -136,24 +139,25 @@ public:
             if (publish()) {
                 std::cout << "S " << node_id << " " << data_.index() << std::endl;
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(1000));   // sleep for 1000 ms
+            std::this_thread::sleep_for(std::chrono::milliseconds(sleep_time));   // sleep for certain amount of time (ms)
         }
     }
 };
 
 int main(int argc, char *argv[])
 {
-    if (argc != 3) {
-        std::cout << "Provide 3 arguments!\n";
+    if (argc != 4) {
+        std::cout << "Provide 4 arguments!\n";
         return 0;
     }
 
     int node_id = atoi(argv[1]);
     bool is_reliable = (!strcmp(argv[2], "true")) ? true : false;
+    int sleep_time = atoi(argv[3]);
 
-    std::cout << "Pub Node: " << node_id << ", Reliability: " << argv[2] << " " << is_reliable << std::endl;
+    // std::cout << "Pub Node: " << node_id << ", Reliability: " << argv[2] << " " << is_reliable << std::endl;
 
-    MyPublisher *pub = new MyPublisher(node_id, is_reliable);
+    MyPublisher *pub = new MyPublisher(node_id, is_reliable, sleep_time);
     if (pub->init()) {
         pub->run();
     }

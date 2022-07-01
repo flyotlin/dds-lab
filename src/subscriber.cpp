@@ -171,7 +171,7 @@ int main(int argc, char *argv[])
     int node_id = atoi(argv[1]);
     bool is_reliable = (!strcmp(argv[2], "true")) ? true : false;
 
-    std::cout << "Sub Node: " << node_id << ", Reliability: " << argv[2] << " " << is_reliable << std::endl;
+    // std::cout << "Sub Node: " << node_id << ", Reliability: " << argv[2] << " " << is_reliable << std::endl;
 
     MySubscriber *sub = new MySubscriber(node_id, is_reliable);
     if (sub->init()) {
