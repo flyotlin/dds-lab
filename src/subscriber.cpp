@@ -1,84 +1,49 @@
-#include "SimpleStringPubSubTypes.h"
-
-#include <fastdds/dds/domain/DomainParticipantFactory.hpp>
-#include <fastdds/dds/domain/DomainParticipant.hpp>
-#include <fastdds/dds/topic/TypeSupport.hpp>
-#include <fastdds/dds/subscriber/Subscriber.hpp>
-#include <fastdds/dds/subscriber/DataReader.hpp>
-#include <fastdds/dds/subscriber/DataReaderListener.hpp>
-#include <fastdds/dds/subscriber/qos/DataReaderQos.hpp>
-#include <fastdds/dds/subscriber/SampleInfo.hpp>
+#include "subscriber.h"
 
 using namespace eprosima::fastdds::dds;
 
 
-class SubListener : public DataReaderListener
+SubListener::SubListener(int nodeID)
+    : nodeID(nodeID)
 {
-public:
-    SimpleString data_;
-    std::atomic_int samples_;
+    samples_ = 0;
+}
 
-    int node_id;
+SubListener::~SubListener() {}
 
-    SubListener(int node_id)
-        : node_id(node_id)
-    {
-        samples_ = 0;
-    }
-
-    ~SubListener() override
-    {
-    }
-
-    void on_data_available(DataReader *reader) override
-    {
-        SampleInfo info;
-        if (ReturnCode_t::RETCODE_OK == reader->take_next_sample(&data_, &info)) {
-            if (info.valid_data) {
-                samples_++;
-                std::cout << "R " << node_id << " " << data_.index() << std::endl;
-                // std::cout << info.sourc e_timestamp.to_ns() << ", " << info.reception_timestamp.to_ns() << std::endl;
-            }
+void SubListener::on_data_available(DataReader *reader)
+{
+    SampleInfo info;
+    if (ReturnCode_t::RETCODE_OK == reader->take_next_sample(&data_, &info)) {
+        if (info.valid_data) {
+            samples_++;
+            std::cout << "R " << nodeID << " " << data_.index() << std::endl;
+            // std::cout << info.sourc e_timestamp.to_ns() << ", " << info.reception_timestamp.to_ns() << std::endl;
         }
     }
-};
+}
 
-
-class MySubscriber
+bool MySubscriber::changeDatareaderReliability(bool isDatareaderReliable)
 {
-private:
-    const static int DOMAIN_ID = 0;
-    DomainParticipant *participant_;
-    Subscriber *subscriber_;
-    DataReader *reader_;
-    Topic *topic_;
-    TypeSupport type_;
-    SubListener *listener_;
+    DataReaderQos qos = reader_->get_qos();
 
-    int node_id;
-    bool is_reliable;
+    ReliabilityQosPolicy policy;
+    policy.kind = isDatareaderReliable ? RELIABLE_RELIABILITY_QOS : BEST_EFFORT_RELIABILITY_QOS;
+    qos.reliability(policy);
 
-    bool change_datareader_reliability(bool is_reliable)
-    {
-        DataReaderQos qos = reader_->get_qos();
-
-        ReliabilityQosPolicy policy;
-        policy.kind = is_reliable ? RELIABLE_RELIABILITY_QOS : BEST_EFFORT_RELIABILITY_QOS;
-        qos.reliability(policy);
-
-        if (ReturnCode_t::RETCODE_OK != reader_->set_qos(qos)) {
-            return false;
-        }
-
-        return true;
+    if (ReturnCode_t::RETCODE_OK != reader_->set_qos(qos)) {
+        return false;
     }
 
-    bool change_topic_reliability(bool is_reliable)
+    return true;
+}
+
+bool MySubscriber::changeTopicReliability(bool isTopicReliable)
     {
         TopicQos qos = topic_->get_qos();
 
         ReliabilityQosPolicy policy;
-        policy.kind = is_reliable ? RELIABLE_RELIABILITY_QOS : BEST_EFFORT_RELIABILITY_QOS;
+        policy.kind = isTopicReliable ? RELIABLE_RELIABILITY_QOS : BEST_EFFORT_RELIABILITY_QOS;
         qos.reliability(policy);
 
         if (ReturnCode_t::RETCODE_OK != topic_->set_qos(qos)) {
@@ -88,92 +53,117 @@ private:
         return true;
     }
 
-public:
-    MySubscriber(int node_id, bool is_reliable)
-        : participant_(nullptr)
-        , subscriber_(nullptr)
-        , topic_(nullptr)
-        , reader_(nullptr)
-        , type_(new SimpleStringPubSubType)
-        , node_id(node_id)
-        , listener_(new SubListener(node_id))
-        , is_reliable(is_reliable)
-    {
+bool MySubscriber::changeDatareaderResourceLimits(int datareaderMaxSample)
+{
+    DataReaderQos qos = reader_->get_qos();
+    ResourceLimitsQosPolicy policy;
+    policy.max_samples = datareaderMaxSample;
+    qos.resource_limits(policy);
+
+    if (ReturnCode_t::RETCODE_OK != reader_->set_qos(qos)) {
+        return false;
+    }
+    return true;
+}
+
+bool MySubscriber::changeTopicResourceLimits(int topicMaxSample)
+{
+    TopicQos qos = topic_->get_qos();
+    ResourceLimitsQosPolicy policy;
+    policy.max_samples = topicMaxSample;
+    qos.resource_limits(policy);
+
+    if (ReturnCode_t::RETCODE_OK != topic_->set_qos(qos)) {
+        return false;
+    }
+    return true;
+}
+
+MySubscriber::MySubscriber(int nodeID, bool isReliable, int maxSample)
+    : participant_(nullptr)
+    , subscriber_(nullptr)
+    , topic_(nullptr)
+    , reader_(nullptr)
+    , type_(new SimpleStringPubSubType)
+    , nodeID(nodeID)
+    , listener_(new SubListener(nodeID))
+    , isReliable(isReliable)
+    , maxSample(maxSample)
+{
+}
+
+MySubscriber::~MySubscriber()
+{
+    if (reader_ != nullptr) {
+        subscriber_->delete_datareader(reader_);
+    }
+    if (topic_ != nullptr) {
+        participant_->delete_topic(topic_);
+    }
+    if (subscriber_ != nullptr) {
+        participant_->delete_subscriber(subscriber_);
+    }
+    DomainParticipantFactory::get_instance()->delete_participant(participant_);
+}
+
+bool MySubscriber::init()
+{
+    DomainParticipantQos participantQos;
+    participantQos.name("participant_subscriber");
+    participant_ = DomainParticipantFactory::get_instance()->create_participant(DOMAIN_ID, participantQos);
+    if (participant_ == nullptr) {
+        return false;
     }
 
-    virtual ~MySubscriber()
-    {
-        if (reader_ != nullptr) {
-            subscriber_->delete_datareader(reader_);
-        }
-        if (topic_ != nullptr) {
-            participant_->delete_topic(topic_);
-        }
-        if (subscriber_ != nullptr) {
-            participant_->delete_subscriber(subscriber_);
-        }
-        DomainParticipantFactory::get_instance()->delete_participant(participant_);
+    // register the data type
+    type_.register_type(participant_);
+
+    // create Topic
+    const std::string topic_name = "test_topic_" + nodeID;
+    const std::string type_name = "SimpleString";
+    topic_ = participant_->create_topic(topic_name, type_name, TOPIC_QOS_DEFAULT);
+    if (topic_ == nullptr) {
+        return false;
     }
 
-    bool init()
-    {
-        DomainParticipantQos participantQos;
-        participantQos.name("participant_subscriber");
-        participant_ = DomainParticipantFactory::get_instance()->create_participant(DOMAIN_ID, participantQos);
-        if (participant_ == nullptr) {
-            return false;
-        }
-
-        // register the data type
-        type_.register_type(participant_);
-
-        // create Topic
-        const std::string topic_name = "test_topic_" + node_id;
-        const std::string type_name = "SimpleString";
-        topic_ = participant_->create_topic(topic_name, type_name, TOPIC_QOS_DEFAULT);
-        if (topic_ == nullptr) {
-            return false;
-        }
-        change_topic_reliability(is_reliable);
-
-        // create Subscriber
-        subscriber_ = participant_->create_subscriber(SUBSCRIBER_QOS_DEFAULT, nullptr);
-        if (subscriber_ == nullptr) {
-            return false;
-        }
-
-        // create DataReader
-        reader_ = subscriber_->create_datareader(topic_, DATAREADER_QOS_DEFAULT, listener_);
-        if (reader_ == nullptr) {
-            return false;
-        }
-        change_datareader_reliability(is_reliable);
-
-        return true;
+    // create Subscriber
+    subscriber_ = participant_->create_subscriber(SUBSCRIBER_QOS_DEFAULT, nullptr);
+    if (subscriber_ == nullptr) {
+        return false;
     }
 
-    void run()
-    {
-        while (true) {
-            // std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
+    // create DataReader
+    reader_ = subscriber_->create_datareader(topic_, DATAREADER_QOS_DEFAULT, listener_);
+    if (reader_ == nullptr) {
+        return false;
     }
-};
+
+    changeTopicReliability(isReliable);
+    changeDatareaderReliability(isReliable);
+
+    return true;
+}
+
+void MySubscriber::run()
+{
+    while (true) {
+    }
+}
 
 
 int main(int argc, char *argv[])
 {
-    if (argc != 3) {
-        std::cout << "Provide 3 arguments!\n";
+    if (argc != 4) {
+        std::cout << "Insufficient Arguments\n";
+        std::cout << "Usage: ./MySubscriber NODE_ID IS_RELIABLE MAX_SAMPLE" << std::endl;
         return 0;
     }
 
-    int node_id = atoi(argv[1]);
-    bool is_reliable = (!strcmp(argv[2], "true")) ? true : false;
+    int nodeID = atoi(argv[1]);
+    bool isReliable = (!strcmp(argv[2], "true")) ? true : false;
+    int maxSample = atoi(argv[3]);
 
-    // std::cout << "Sub Node: " << node_id << ", Reliability: " << argv[2] << " " << is_reliable << std::endl;
-
-    MySubscriber *sub = new MySubscriber(node_id, is_reliable);
+    MySubscriber *sub = new MySubscriber(nodeID, isReliable, maxSample);
     if (sub->init()) {
         sub->run();
     }
