@@ -142,14 +142,14 @@ bool MyPublisher::publish()
 }
 
 void MyPublisher::run()
-    {
-        while (true) {
-            if (publish()) {
-                std::cout << "S " << nodeID << " " << data_.index() << std::endl;
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(interval));   // sleep for certain amount of time (ms)
+{
+    while (true) {
+        if (publish()) {
+            std::cout << "S " << nodeID << " " << data_.index() << std::endl;
         }
+        std::this_thread::sleep_for(std::chrono::milliseconds(interval));   // sleep for certain amount of time (ms)
     }
+}
 
 
 int main(int argc, char *argv[])
